@@ -107,6 +107,9 @@ Widget::Widget(
 		crl::on_main(this, [=] { createLanguageLink(); });
 	}, lifetime());
 
+	if (_account->hasTdbAuthorization()) {
+		point = EnterPoint::Phone;
+	}
 	switch (point) {
 	case EnterPoint::Start:
 		getNearestDC();

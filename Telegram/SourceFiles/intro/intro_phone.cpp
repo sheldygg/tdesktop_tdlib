@@ -8,8 +8,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "intro/intro_phone.h"
 
 #include "lang/lang_keys.h"
-#include "intro/intro_code.h"
-#include "intro/intro_email.h"
+#include "intro/intro_tdb_auth_step.h"
+#include "intro/intro_widget.h"
+#include "main/main_tdb_authorization.h"
 #include "intro/intro_qr.h"
 #include "styles/style_intro.h"
 #include "ui/widgets/buttons.h"
@@ -25,6 +26,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/abstract_box.h"
 #include "boxes/phone_banned_box.h"
 #include "core/application.h"
+#include "core/core_settings.h"
 #include "window/window_controller.h"
 #include "window/window_session_controller.h"
 #include "countries/countries_instance.h" // Countries::Groups
@@ -61,7 +63,7 @@ PhoneWidget::PhoneWidget(
 	this,
 	st::introPhone,
 	[](const QString &s) { return Countries::Groups(s); })
-, _checkRequestTimer([=] { checkRequest(); }) {
+, _tdbApi(&account->tdbAuthorization().tdb().sender()) {
 	_code->setAccessibleName(tr::lng_country_code(tr::now));
 	_phone->setAccessibleName(tr::lng_phone_number(tr::now));
 	_phone->frontBackspaceEvent(
@@ -102,6 +104,10 @@ PhoneWidget::PhoneWidget(
 		_country->chooseCountry(u"US"_q);
 	}
 	_changed = false;
+	account->tdbAuthorization().stateValue(
+	) | rpl::on_next([=] {
+		crl::on_main(this, [=] { advanceTdbState(); });
+	}, lifetime());
 }
 
 QString PhoneWidget::accessibilityName() {
@@ -162,6 +168,11 @@ void PhoneWidget::submit() {
 	if (_sentRequest || isHidden()) {
 		return;
 	}
+	const auto &proxy = Core::App().settings().proxy();
+	if (proxy.isEnabled() && proxy.selected().type == MTP::ProxyData::Type::Web) {
+		showPhoneError(tr::lng_proxy_unsupported());
+		return;
+	}
 
 	{
 		const auto hasCodeButWaitingPhone = _code->hasFocus()
@@ -199,90 +210,47 @@ void PhoneWidget::submit() {
 
 	hidePhoneError();
 
-	_checkRequestTimer.callEach(1000);
-
 	_sentPhone = phone;
-	api().instance().setUserPhone(_sentPhone);
-	_sentRequest = api().request(MTPauth_SendCode(
-		MTP_string(_sentPhone),
-		MTP_int(ApiId),
-		MTP_string(ApiHash),
-		MTP_codeSettings(
-			MTP_flags(0),
-			MTPVector<MTPbytes>(),
-			MTPstring(),
-			MTPBool())
-	)).done([=](const MTPauth_SentCode &result) {
-		phoneSubmitDone(result);
-	}).fail([=](const MTP::Error &error) {
-		phoneSubmitFail(error);
-	}).handleFloodErrors().send();
-}
-
-void PhoneWidget::stopCheck() {
-	_checkRequestTimer.cancel();
-}
-
-void PhoneWidget::checkRequest() {
-	auto status = api().instance().state(_sentRequest);
-	if (status < 0) {
-		auto leftms = -status;
-		if (leftms >= 1000) {
-			api().request(base::take(_sentRequest)).cancel();
-		}
-	}
-	if (!_sentRequest && status == MTP::RequestSent) {
-		stopCheck();
-	}
-}
-
-void PhoneWidget::phoneSubmitDone(const MTPauth_SentCode &result) {
-	stopCheck();
-	_sentRequest = 0;
-
-	result.match([&](const MTPDauth_sentCode &data) {
-		fillSentCodeData(data);
-		getData()->phone = DigitsOnly(_sentPhone);
-		getData()->phoneHash = qba(data.vphone_code_hash());
-		if (getData()->emailStatus == EmailStatus::SetupRequired) {
-			return goNext<EmailWidget>();
-		}
-		const auto next = data.vnext_type();
-		if (next && next->type() == mtpc_auth_codeTypeCall) {
-			getData()->callStatus = CallStatus::Waiting;
-			getData()->callTimeout = data.vtimeout().value_or(60);
-		} else {
-			getData()->callStatus = CallStatus::Disabled;
-			getData()->callTimeout = 0;
-		}
-		goNext<CodeWidget>();
-	}, [&](const MTPDauth_sentCodeSuccess &data) {
-		finish(data.vauthorization());
-	}, [](const MTPDauth_sentCodePaymentRequired &) {
-		LOG(("API Error: Unexpected auth.sentCodePaymentRequired "
-			"(PhoneWidget::phoneSubmitDone)."));
-	});
-}
-
-void PhoneWidget::phoneSubmitFail(const MTP::Error &error) {
-	if (MTP::IsFloodError(error)) {
-		stopCheck();
+	getData()->phone = DigitsOnly(phone);
+	_allowTdbForward = true;
+	_sentRequest = _tdbApi.request(Tdb::TLsetAuthenticationPhoneNumber(
+		Tdb::tl_string(phone), std::nullopt
+	)).done([=] {
 		_sentRequest = 0;
-		showPhoneError(tr::lng_flood_error());
+		advanceTdbState();
+	}).fail([=](const Tdb::Error &error) {
+		phoneSubmitFail(error);
+	}).send();
+}
+
+void PhoneWidget::advanceTdbState() {
+	if (!_active || !_allowTdbForward || _sentRequest) {
 		return;
 	}
+	const auto &state = account().tdbAuthorization().state();
+	if (!state
+		|| state->type() == Tdb::id_authorizationStateWaitTdlibParameters
+		|| state->type() == Tdb::id_authorizationStateWaitPhoneNumber
+		|| state->type() == Tdb::id_authorizationStateClosed) {
+		return;
+	}
+	_allowTdbForward = false;
+	_tdbApi.request(base::take(_sentRequest)).cancel();
+	goNext<TdbAuthStep>();
+}
 
-	stopCheck();
+void PhoneWidget::phoneSubmitFail(const Tdb::Error &error) {
 	_sentRequest = 0;
-	const auto &err = error.type();
-	if (err == u"PHONE_NUMBER_FLOOD"_q) {
-		Ui::show(Ui::MakeInformBox(tr::lng_error_phone_flood()));
-	} else if (err == u"PHONE_NUMBER_INVALID"_q) { // show error
+	_allowTdbForward = false;
+	const auto &err = error.message;
+	if (Tdb::IsFloodError(error) || err == u"PHONE_NUMBER_FLOOD"_q) {
+		showPhoneError(tr::lng_flood_error());
+	} else if (err == u"PHONE_NUMBER_INVALID"_q) {
 		showPhoneError(tr::lng_bad_phone());
 	} else if (err == u"PHONE_NUMBER_BANNED"_q) {
 		Ui::ShowPhoneBannedError(getData()->controller, _sentPhone);
-	} else if (!MTP::IgnoreError(error)) {
-		showPhoneError(rpl::single(err));
+	} else {
+		showPhoneError(rpl::single(Lang::Hard::ServerError()));
 	}
 }
 
@@ -299,6 +267,8 @@ void PhoneWidget::setInnerFocus() {
 }
 
 void PhoneWidget::activate() {
+	_active = true;
+	crl::on_main(this, [=] { advanceTdbState(); });
 	Step::activate();
 	showChildren();
 	setInnerFocus();
@@ -306,14 +276,13 @@ void PhoneWidget::activate() {
 
 void PhoneWidget::finished() {
 	Step::finished();
-	_checkRequestTimer.cancel();
-	apiClear();
-
 	cancelled();
 }
 
 void PhoneWidget::cancelled() {
-	api().request(base::take(_sentRequest)).cancel();
+	_active = false;
+	_allowTdbForward = false;
+	_tdbApi.request(base::take(_sentRequest)).cancel();
 }
 
 } // namespace details

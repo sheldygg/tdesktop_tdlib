@@ -60,8 +60,10 @@ include(cmake/external/qt/package.cmake)
 
 set(desktop_app_skip_libs
     glibmm
+    tde2e
     variant
 )
 
 add_subdirectory(cmake)
+include(Telegram/cmake/lib_td.cmake)
 add_subdirectory(Telegram)

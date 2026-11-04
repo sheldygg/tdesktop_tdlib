@@ -40,7 +40,7 @@ This atlas divides Telegram Desktop's sources into named areas, ordered from fou
 
 ### accounts — accounts and sessions
 - Paths: `SourceFiles/main/`
-- The multi-account `Main::Domain`, each `Main::Account` with its MTP instance and local storage, the logged-in `Main::Session` that owns data, API and storage, per-session settings and the server `AppConfig`. It must not own feature logic beyond holding components.
+- The multi-account `Main::Domain`, each `Main::Account` with its MTP instance, TDLib authorization and local storage, the logged-in `Main::Session` that owns data, API and storage, per-session settings and the server `AppConfig`. It must not own feature logic beyond holding components.
 
 ### lang — localization
 - Paths: `SourceFiles/lang/`, `SourceFiles/countries/`
@@ -85,6 +85,10 @@ This atlas divides Telegram Desktop's sources into named areas, ordered from fou
 - `Wallet::Session` with balance, history and sends, the engine host, toncenter transport and streaming, rates and on-ramp, the transfer store and its chat service messages, the own card's stickers shown and saved through `wallet.setCardStickers`, the key vault with unlock and protection, and the pure `td_gram` codecs. `Main::Session`, `Data::Session` and `api_updates` reach into it; it must not own panels or boxes. Today it also builds the passcode, unlock and key-protection boxes in `wallet_unlock` and `wallet_key_protection`; those belong in `wallet/ui`.
 
 ## Network and storage
+
+### tdb — TDLib client adapter
+- Paths: `SourceFiles/tdb/`
+- Native TDLib clients and their lifecycle, generated TD API wrappers and conversions, request callbacks, option updates, and file-generation helpers. It must not own application accounts, authorization screens, peers, messages or UI. `Main::Account` and feature API integration belong in their existing areas.
 
 ### api — Telegram API requests
 - Paths: `SourceFiles/api/`, `SourceFiles/apiwrap*`

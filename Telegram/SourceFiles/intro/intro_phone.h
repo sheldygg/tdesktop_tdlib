@@ -9,7 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "ui/countryinput.h"
 #include "intro/intro_step.h"
-#include "base/timer.h"
+#include "tdb/tdb_sender.h"
 
 namespace Ui {
 class PhonePartInput;
@@ -48,14 +48,12 @@ protected:
 private:
 	void setupQrLogin();
 	void phoneChanged();
-	void checkRequest();
+	void advanceTdbState();
 	void countryChanged();
 
-	void phoneSubmitDone(const MTPauth_SentCode &result);
-	void phoneSubmitFail(const MTP::Error &error);
+	void phoneSubmitFail(const Tdb::Error &error);
 
 	QString fullNumber() const;
-	void stopCheck();
 
 	void showPhoneError(rpl::producer<QString> text);
 	void hidePhoneError();
@@ -67,9 +65,10 @@ private:
 	object_ptr<Ui::PhonePartInput> _phone;
 
 	QString _sentPhone;
-	mtpRequestId _sentRequest = 0;
-
-	base::Timer _checkRequestTimer;
+	Tdb::Sender _tdbApi;
+	Tdb::RequestId _sentRequest = 0;
+	bool _active = false;
+	bool _allowTdbForward = true;
 
 };
 

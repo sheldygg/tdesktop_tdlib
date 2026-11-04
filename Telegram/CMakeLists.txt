@@ -37,6 +37,7 @@ include(cmake/td_iv.cmake)
 include(cmake/td_lang.cmake)
 include(cmake/td_mtproto.cmake)
 include(cmake/td_scheme.cmake)
+include(cmake/td_tdb.cmake)
 include(cmake/td_tde2e.cmake)
 include(cmake/td_ui.cmake)
 include(cmake/td_webauthn.cmake)
@@ -82,6 +83,7 @@ PRIVATE
     tdesktop::td_lang
     tdesktop::td_mtproto
     tdesktop::td_scheme
+    tdesktop::td_tdb
     tdesktop::td_tde2e
     tdesktop::td_ui
     tdesktop::td_webauthn
@@ -1490,6 +1492,8 @@ PRIVATE
     intro/intro_password_check.h
     intro/intro_phone.cpp
     intro/intro_phone.h
+    intro/intro_tdb_auth_step.cpp
+    intro/intro_tdb_auth_step.h
     intro/intro_qr.cpp
     intro/intro_qr.h
     intro/intro_signup.cpp
@@ -1540,6 +1544,8 @@ PRIVATE
     layout/layout_item_base.h
     main/main_account.cpp
     main/main_account.h
+    main/main_tdb_authorization.cpp
+    main/main_tdb_authorization.h
     main/main_app_config.cpp
     main/main_app_config.h
     main/main_app_config_values.cpp

@@ -28,6 +28,7 @@ class Domain;
 class Session;
 class SessionSettings;
 class AppConfig;
+class TdbAuthorization;
 
 class Account final : public base::has_weak_ptr {
 public:
@@ -39,6 +40,8 @@ public:
 	}
 
 	[[nodiscard]] Storage::Domain &domainLocal() const;
+	[[nodiscard]] TdbAuthorization &tdbAuthorization();
+	[[nodiscard]] bool hasTdbAuthorization() const;
 
 	[[nodiscard]] Storage::StartResult legacyStart(
 		const QByteArray &passcode);
@@ -146,6 +149,7 @@ private:
 	const std::unique_ptr<Storage::Account> _local;
 
 	std::unique_ptr<MTP::Instance> _mtp;
+	std::unique_ptr<TdbAuthorization> _tdbAuthorization;
 	rpl::variable<MTP::Instance*> _mtpValue;
 	std::unique_ptr<MTP::Instance> _mtpForKeysDestroy;
 	rpl::event_stream<MTPUpdates> _mtpUpdates;

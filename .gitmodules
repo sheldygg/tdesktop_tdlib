@@ -106,3 +106,6 @@
 [submodule "Telegram/ThirdParty/zxcvbn"]
 	path = Telegram/ThirdParty/zxcvbn
 	url = https://github.com/tsyrogit/zxcvbn-c.git
+[submodule "Telegram/ThirdParty/td"]
+	path = Telegram/ThirdParty/td
+	url = https://github.com/tdlib/td.git

@@ -71,6 +71,9 @@ Version **1.8.15** was the last that supports older systems
 
 ## Build instructions
 
+For this fork's TDLib integration and additional build requirements, see
+[TDLib foundation](docs/tdlib.md).
+
 * [Windows (32-bit and 64-bit)][win]
 * [macOS][mac]
 * [GNU/Linux using Docker][linux]

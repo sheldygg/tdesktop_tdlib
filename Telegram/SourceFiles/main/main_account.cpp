@@ -27,6 +27,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "main/main_domain.h"
 #include "main/main_session_settings.h"
+#include "main/main_tdb_authorization.h"
+
+#include <QtCore/QDir>
 
 namespace Main {
 namespace {
@@ -63,6 +66,17 @@ Storage::Domain &Account::domainLocal() const {
 	return _domain->local();
 }
 
+TdbAuthorization &Account::tdbAuthorization() {
+	if (!_tdbAuthorization) {
+		_tdbAuthorization = std::make_unique<TdbAuthorization>(this);
+	}
+	return *_tdbAuthorization;
+}
+
+bool Account::hasTdbAuthorization() const {
+	return _tdbAuthorization != nullptr;
+}
+
 [[nodiscard]] Storage::StartResult Account::legacyStart(
 		const QByteArray &passcode) {
 	Expects(!_appConfig);
@@ -84,6 +98,9 @@ void Account::start(std::unique_ptr<MTP::Config> config) {
 	_appConfig->start();
 	watchProxyChanges();
 	watchSessionChanges();
+	if (QDir(TdbAuthorization::DatabasePath(this)).exists()) {
+		tdbAuthorization().retry();
+	}
 }
 
 void Account::prepareToStartAdded(
@@ -546,12 +563,20 @@ bool Account::loggingOut() const {
 
 void Account::forcedLogOut() {
 	if (sessionExists()) {
+		if (_tdbAuthorization && !_tdbAuthorization->closed()) {
+			_tdbAuthorization->logout([=] { forcedLogOut(); });
+			return;
+		}
 		loggedOut();
 		resetAuthorizationKeys();
 	}
 }
 
 void Account::loggedOut() {
+	if (_tdbAuthorization && !_tdbAuthorization->closed()) {
+		_tdbAuthorization->logout([=] { loggedOut(); });
+		return;
+	}
 	_loggingOut = false;
 	Media::Player::mixer()->stopAndClear();
 	destroySession(DestroyReason::LoggedOut);
@@ -630,11 +655,17 @@ void Account::handleLoginCode(const QString &code) const {
 
 void Account::resetAuthorizationKeys() {
 	Expects(_mtp != nullptr);
+	if (_tdbAuthorization) {
+		_tdbAuthorization->bindLegacy(nullptr);
+	}
 
 	{
 		const auto old = base::take(_mtp);
 		auto config = std::make_unique<MTP::Config>(old->config());
 		startMtp(std::move(config));
+	}
+	if (_tdbAuthorization) {
+		_tdbAuthorization->bindLegacy(_mtp.get());
 	}
 	local().writeMtpData();
 }
